@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher, html, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart,Command, StateFilter
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove, message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove, keyboard_button, message, reply_keyboard_markup
 from aiogram.fsm.state import State,StatesGroup
 from aiogram.fsm.context import FSMContext
 
@@ -18,7 +18,7 @@ LLM = Groq(
     api_key= getenv("GROQ_API_KEY")
 )
 
-KEYBOARD_DISH_IDEAS = InlineKeyboardMarkup(
+INLINE_DISH_IDEAS_KEYBOARD = InlineKeyboardMarkup(
     inline_keyboard=[
     [
      InlineKeyboardButton(text="🔄",callback_data="pressed reload"),
@@ -26,6 +26,29 @@ KEYBOARD_DISH_IDEAS = InlineKeyboardMarkup(
      ]
 ]
 )
+
+REPLY_DISH_IDEAS_KEYBOARD = ReplyKeyboardMarkup(
+    keyboard=[
+        [
+            KeyboardButton(text='1️⃣'),
+            KeyboardButton(text='2️⃣'),
+            KeyboardButton(text='3️⃣'),
+            KeyboardButton(text='4️⃣'),
+            KeyboardButton(text='5️⃣')
+        ],
+        [
+            KeyboardButton(text='6️⃣'),
+            KeyboardButton(text='7️⃣'),
+            KeyboardButton(text='8️⃣'),
+            KeyboardButton(text='9️⃣'),
+            KeyboardButton(text='🔟')
+        ]
+    ],
+    resize_keyboard=True
+)
+
+
+
 MAIN_MENU_KEYBOARD = ReplyKeyboardMarkup(
     keyboard=[
     [
@@ -36,11 +59,32 @@ MAIN_MENU_KEYBOARD = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
+FAQ_KEYBOARD = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(text='⬅',callback_data="faq_go_back")
+        ]
+    ]
+)
+
+
+
+FAQ = f"""
+The {html.bold("Chef-Brain BOT")} can generate random recipes. 🥗🥪🧆🥘👨‍🍳
+
+Click 🧠 emoji to generate a unique recipes
+Click ⭐emoji to see your favourite recipes
+Click ⚙  to change your preferences
+
+{html.bold("⬅  GO BACK TO MAIN MENU")}
+"""
+
 dp = Dispatcher()
 
 #defining state group
 class RecipeFlow(StatesGroup):
     waiting_for_dish_idea = State()
+    reading_faq = State()
 
 
 
@@ -85,10 +129,15 @@ async def handle_dishideas_reload(callback: CallbackQuery, state: FSMContext):
 
     text = f"{html.bold("Suggested recipes:")}\n"
     for index,dish in enumerate(dishes,start=1):
-        text += f"{index}. {html.bold(dish)}\n"
+        text += f"{index}. {dish}\n"
+
+    text += f"""
+{html.bold("🔃 - refresh reicipes list")}
+{html.bold("❌ - go back to main menu")}
+    """
 
     await callback.message.edit_text(text=text,
-                                     reply_markup=KEYBOARD_DISH_IDEAS)
+                                     reply_markup=INLINE_DISH_IDEAS_KEYBOARD)
 
 
 
@@ -96,12 +145,19 @@ async def handle_dishideas_reload(callback: CallbackQuery, state: FSMContext):
 async def handle_dishideas_close(callback: CallbackQuery, bot: Bot, state: FSMContext):
     await callback.answer()
 
-    await state.clear()
+    user_data = await state.get_data()
+    suggest_recipe_reply_message = user_data.get("suggest_recipe_reply_message")
 
     await bot.delete_message(
         chat_id=callback.message.chat.id,
         message_id=callback.message.message_id
     )
+
+    await bot.delete_message(chat_id=callback.message.chat.id,
+                             message_id=suggest_recipe_reply_message)
+
+    await state.clear()
+
 
     await send_to_main_menu(
         chat_id = callback.message.chat.id,
@@ -111,6 +167,23 @@ async def handle_dishideas_close(callback: CallbackQuery, bot: Bot, state: FSMCo
     )
 
 
+@dp.callback_query(F.data == "faq_go_back")
+async def handle_faq_go_back(callback: CallbackQuery, bot: Bot, state: FSMContext):
+    await callback.answer()
+
+    await state.clear()
+
+    await bot.delete_message(
+            chat_id=callback.message.chat.id,
+            message_id=callback.message.message_id
+        )
+
+    await send_to_main_menu(
+        chat_id = callback.message.chat.id,
+        full_name = callback.from_user.full_name,
+        state = state,
+        bot = bot
+    )
 
 # @dp.callback_query(F.data.in_({"pressed <-","pressed ->"}))
 # async def handle_dishideas_scroll(callback: CallbackQuery, state: FSMContext):
@@ -155,7 +228,7 @@ async def command_start_handler(message: Message, state: FSMContext, bot: Bot) -
 #             text += f"{index}. {html.bold(dish)}\n"
 #
 #     await message.answer(text=text, 
-#                          reply_markup=KEYBOARD_DISH_IDEAS)
+#                          reply_markup=INLINE_DISH_IDEAS_KEYBOARD)
 #
 #     await bot.delete_message(chat_id=message.chat.id,
 #                              message_id=message.message_id)
@@ -169,7 +242,7 @@ async def command_start_handler(message: Message, state: FSMContext, bot: Bot) -
 @dp.message(F.text == "🧠", StateFilter(None))
 async def show_suggest_recipe(message: Message, state: FSMContext, bot: Bot):
     user_data = await state.get_data()
-    
+
     old_menu_id = user_data.get("menu_message_id")
 
     if old_menu_id:
@@ -185,12 +258,22 @@ async def show_suggest_recipe(message: Message, state: FSMContext, bot: Bot):
 
     text = f"{html.bold("Suggested recipes:")}\n"
     for index,dish in enumerate(dishes,start=1):
-            text += f"{index}. {html.bold(dish)}\n"
-    
+            text += f"{index}. {dish}\n"
+
+    text += f"""
+{html.bold("🔃 - refresh reicipes list")}
+{html.bold("❌ - go back to main menu")}
+    """
+
     clear_msg = await message.answer(text='thinking...',reply_markup=ReplyKeyboardRemove())
 
-    await message.answer(text=text, 
-                         reply_markup=KEYBOARD_DISH_IDEAS)
+    await message.answer(text=text,
+                         reply_markup=INLINE_DISH_IDEAS_KEYBOARD)
+
+    reply_message = await message.answer(text=f"{html.bold("USE NUMBERS FROM 1️⃣TO 🔟 TO GENERATE COMPLETE RECIPE")}",
+                         reply_markup=REPLY_DISH_IDEAS_KEYBOARD)
+
+    await state.update_data(suggest_recipe_reply_message = reply_message.message_id)
 
     await bot.delete_message(chat_id=message.chat.id,
                              message_id=message.message_id)
@@ -200,12 +283,43 @@ async def show_suggest_recipe(message: Message, state: FSMContext, bot: Bot):
 
 
 
+@dp.message(F.text == '❓', StateFilter(None))
+async def show_help(message: Message, state: FSMContext, bot: Bot):
+    user_data = await state.get_data()
+
+    old_menu_id = user_data.get("menu_message_id")
+
+    if old_menu_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id,message_id=old_menu_id)
+        except Exception:
+            pass
+
+    await state.set_state(RecipeFlow.reading_faq)
+
+    clear_msg = await message.answer(text='thinking...',reply_markup=ReplyKeyboardRemove())
+
+    await message.answer(text=FAQ,
+                         reply_markup=FAQ_KEYBOARD)
+
+    await bot.delete_message(chat_id=message.chat.id,
+                                 message_id=message.message_id)
+    await bot.delete_message(chat_id=message.chat.id,
+                                 message_id=clear_msg.message_id)
+
+
+
 
 
 #NOTE: cornercases
 
 @dp.message(F.text.in_({'🧠','❓'}), RecipeFlow.waiting_for_dish_idea)
-async def handle_cornercases(message: Message):
+async def handle_cornercases1(message: Message):
+    await message.answer("You cant use this command here")
+
+
+@dp.message(F.text.in_({'🧠','❓'}), RecipeFlow.reading_faq)
+async def handle_cornercases2(message: Message):
     await message.answer("You cant use this command here")
 
 
