@@ -47,7 +47,18 @@ REPLY_DISH_IDEAS_KEYBOARD = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-
+IDEAS_INDEX = {
+    '1️⃣':0,
+    '2️⃣':1,
+    '3️⃣':2,
+    '4️⃣':3,
+    '5️⃣':4,
+    '6️⃣':5,
+    '7️⃣':6,
+    '8️⃣':7,
+    '9️⃣':8,
+    '🔟':9
+}
 
 MAIN_MENU_KEYBOARD = ReplyKeyboardMarkup(
     keyboard=[
@@ -100,6 +111,17 @@ def completion(prompt,model):
                                        response_format={"type":"json_object"})
     return comp.choices[0].message.content
 
+def text_prompt(prompt,model):
+    comp = LLM.chat.completions.create(model=model,
+                                       messages=[
+                                       {"role":"user","content":prompt}
+                                       ],)
+    return comp.choices[0].message.content
+
+
+def text_prompt_completion(prompt:str,model:str = "openai/gpt-oss-20b") -> str:
+    return str(text_prompt(prompt,model))
+
 def json_completion(prompt:str, model:str = "openai/gpt-oss-20b") -> dict:
     content = completion(prompt,model)
     return json.loads(content)
@@ -115,6 +137,27 @@ def get_dish_ideas(prev:list):
     return dishes
 
 
+def format_dish_ideas(dishes:list):
+    text = f"{html.bold("Suggested recipes:")}\n"
+    for index,dish in enumerate(dishes,start=1):
+        text += f"{html.bold(str(index))}. {dish}\n"
+
+    text += f"""
+    {html.bold("🔃 - refresh reicipes list")}
+    {html.bold("❌ - go back to main menu")}
+        """
+    return text
+
+def generate_recipe(recipe_name:str):
+    unformatted_recipe = text_prompt_completion(f"""
+    Generate the recipe for {recipe_name},
+    Do not include the name of the recipe at the top of the response.
+    Do not use Markdown (like # or **), and do not use unsupported HTML tags (like <h2>, <ul>, <li>). 
+    To make text bold, use ONLY the <b>text</b> tag. For new lines, use standard \\n characters.
+    """)
+    return unformatted_recipe
+
+
 
 #NOTE: inline keyboard logic
 
@@ -127,14 +170,7 @@ async def handle_dishideas_reload(callback: CallbackQuery, state: FSMContext):
     dishes = get_dish_ideas(user_data.get("used_recipes_ideas",[]))
     await state.update_data(used_recipes_ideas=dishes)
 
-    text = f"{html.bold("Suggested recipes:")}\n"
-    for index,dish in enumerate(dishes,start=1):
-        text += f"{index}. {dish}\n"
-
-    text += f"""
-{html.bold("🔃 - refresh reicipes list")}
-{html.bold("❌ - go back to main menu")}
-    """
+    text = format_dish_ideas(dishes)
 
     await callback.message.edit_text(text=text,
                                      reply_markup=INLINE_DISH_IDEAS_KEYBOARD)
@@ -256,14 +292,7 @@ async def show_suggest_recipe(message: Message, state: FSMContext, bot: Bot):
     await state.update_data(used_recipes_ideas=dishes)
     await state.set_state(RecipeFlow.waiting_for_dish_idea)
 
-    text = f"{html.bold("Suggested recipes:")}\n"
-    for index,dish in enumerate(dishes,start=1):
-            text += f"{index}. {dish}\n"
-
-    text += f"""
-{html.bold("🔃 - refresh reicipes list")}
-{html.bold("❌ - go back to main menu")}
-    """
+    text = format_dish_ideas(dishes)
 
     clear_msg = await message.answer(text='thinking...',reply_markup=ReplyKeyboardRemove())
 
@@ -281,7 +310,18 @@ async def show_suggest_recipe(message: Message, state: FSMContext, bot: Bot):
                              message_id=clear_msg.message_id)
 
 
+@dp.message(F.text.in_(IDEAS_INDEX.keys()), RecipeFlow.waiting_for_dish_idea)
+async def generate_show_suggest_recipe(message: Message, state: FSMContext, bot: Bot):
+    user_data = await state.get_data()
+    dishes = user_data.get("used_recipes_ideas",[])
+    index = IDEAS_INDEX[str(message.text)]
 
+    unformatted_recipe = generate_recipe(dishes[index])
+    text = f"{html.bold(dishes[index])}👨‍🍳\n"
+    text += unformatted_recipe
+
+    await message.answer(text=text,
+                         parse_mode="HTML")
 
 @dp.message(F.text == '❓', StateFilter(None))
 async def show_help(message: Message, state: FSMContext, bot: Bot):
