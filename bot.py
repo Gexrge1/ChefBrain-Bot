@@ -79,6 +79,15 @@ FAQ_KEYBOARD = InlineKeyboardMarkup(
 )
 
 
+DISH_IDEAS_RECIPE_KEYBOARD = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(text='⬅',callback_data="recipe_go_back"),
+            InlineKeyboardButton(text='⭐',callback_data="recipe_add_fav")
+        ]
+    ]
+)
+
 
 FAQ = f"""
 The {html.bold("Chef-Brain BOT")} can generate random recipes. 🥗🥪🧆🥘👨‍🍳
@@ -96,6 +105,7 @@ dp = Dispatcher()
 class RecipeFlow(StatesGroup):
     waiting_for_dish_idea = State()
     reading_faq = State()
+    watching_recipe = State()
 
 
 
@@ -221,6 +231,27 @@ async def handle_faq_go_back(callback: CallbackQuery, bot: Bot, state: FSMContex
         bot = bot
     )
 
+
+@dp.callback_query(F.data == "recipe_go_back")
+async def handle_recipe_go_back(callback: CallbackQuery, state: FSMContext):
+    await callback.answer("returning to suggested recipes")
+
+    user_data = await state.get_data()
+    await state.set_state(RecipeFlow.waiting_for_dish_idea)
+    dishes = user_data.get("used_recipes_ideas",[])
+    text = format_dish_ideas(dishes)
+    # print(await state.get_state())
+
+    reply_message = await callback.message.answer(text=f"{html.bold("USE NUMBERS FROM 1️⃣TO 🔟 TO GENERATE COMPLETE RECIPE")}",
+                             reply_markup=REPLY_DISH_IDEAS_KEYBOARD)
+    await state.update_data(suggest_recipe_reply_message = reply_message.message_id)
+
+
+    await callback.message.edit_text(text=text,
+                                     reply_markup=INLINE_DISH_IDEAS_KEYBOARD)
+
+
+
 # @dp.callback_query(F.data.in_({"pressed <-","pressed ->"}))
 # async def handle_dishideas_scroll(callback: CallbackQuery, state: FSMContext):
 #     await callback.answer()
@@ -296,13 +327,14 @@ async def show_suggest_recipe(message: Message, state: FSMContext, bot: Bot):
 
     clear_msg = await message.answer(text='thinking...',reply_markup=ReplyKeyboardRemove())
 
-    await message.answer(text=text,
+    inline_message = await message.answer(text=text,
                          reply_markup=INLINE_DISH_IDEAS_KEYBOARD)
 
     reply_message = await message.answer(text=f"{html.bold("USE NUMBERS FROM 1️⃣TO 🔟 TO GENERATE COMPLETE RECIPE")}",
                          reply_markup=REPLY_DISH_IDEAS_KEYBOARD)
 
     await state.update_data(suggest_recipe_reply_message = reply_message.message_id)
+    await state.update_data(suggest_recipe_inline_message = inline_message)
 
     await bot.delete_message(chat_id=message.chat.id,
                              message_id=message.message_id)
@@ -314,14 +346,37 @@ async def show_suggest_recipe(message: Message, state: FSMContext, bot: Bot):
 async def generate_show_suggest_recipe(message: Message, state: FSMContext, bot: Bot):
     user_data = await state.get_data()
     dishes = user_data.get("used_recipes_ideas",[])
+    inline_message = user_data.get("suggest_recipe_inline_message",str)
+
+    await state.set_state(RecipeFlow.watching_recipe)
+
     index = IDEAS_INDEX[str(message.text)]
 
-    unformatted_recipe = generate_recipe(dishes[index])
+    unformatted_recipe = generate_recipe(dishes[index]).replace("\\n","\n")
     text = f"{html.bold(dishes[index])}👨‍🍳\n"
     text += unformatted_recipe
+    text += """
+    ⬅ - go back to dish ideas
+    ⭐- add this recipe to favourite
+    """
 
-    await message.answer(text=text,
-                         parse_mode="HTML")
+    clear_msg = await message.answer(text='thinking...',reply_markup=ReplyKeyboardRemove())
+
+
+    await inline_message.edit_text(text=text,
+                         parse_mode="HTML",
+                         reply_markup=DISH_IDEAS_RECIPE_KEYBOARD)
+
+
+    await bot.delete_message(chat_id=message.chat.id,
+                             message_id=message.message_id)
+    await bot.delete_message(chat_id=message.chat.id,
+                             message_id=clear_msg.message_id)
+    await bot.delete_message(chat_id=message.chat.id,
+                             message_id=user_data.get("suggest_recipe_reply_message",int)
+                             )
+
+
 
 @dp.message(F.text == '❓', StateFilter(None))
 async def show_help(message: Message, state: FSMContext, bot: Bot):
