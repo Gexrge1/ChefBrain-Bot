@@ -148,6 +148,7 @@ class RecipeFlow(StatesGroup):
     reading_faq = State()
     watching_recipe = State()
     writing_custom_recipe = State()
+    waiting_for_custom_dish_idea = State()
 
 
 
@@ -242,19 +243,29 @@ def generate_recipe_custom(description:str):
 
 
 @dp.message(RecipeFlow.writing_custom_recipe)
-async def take_custom_recipe_input(message: Message, state: FSMContext):
+async def take_custom_recipe_input(message: Message, state: FSMContext, bot: Bot):
     user_data = await state.get_data()
+
+    first_message = user_data.get("custom_recipe_first_message")
 
     user_input = str(message.text)
 
     if custom_recipe_valid_check(user_input):
+
         dishes = generate_recipe_custom(user_input)
         text = format_custom_dish_ideas(dishes)
         await message.answer(text=text,
                              reply_markup=INLINE_CUSTOM_DISH_IDEAS_KEYBOARD)
-        await message.answer(text=f"{html.bold("USE NUMBERS FROM 1️⃣TO 5️⃣ TO GENERATE COMPLETE RECIPE")}",
+        numbers_message = await message.answer(text=f"{html.bold("USE NUMBERS FROM 1️⃣TO 5️⃣ TO GENERATE COMPLETE RECIPE")}",
                              reply_markup=REPLY_CUSTOM_DISH_IDEAS_KEYBOARD)
+        await state.set_state(RecipeFlow.waiting_for_custom_dish_idea)
+
+        await bot.delete_message(chat_id=message.chat.id,
+                                 message_id=first_message.message_id)
+        await state.update_data(custom_recipe_number_message = numbers_message)
+
     else:
+
         custom_recipe_wrong_description = await message.answer(text=f"Your input : '{html.bold(user_input)}' is not a valid description of the dish or ingredients.")
         await state.update_data(custom_recipe_wrong_description = custom_recipe_wrong_description)
 
@@ -369,6 +380,45 @@ async def handle_recipe_go_back(callback: CallbackQuery, state: FSMContext):
                                      reply_markup=INLINE_DISH_IDEAS_KEYBOARD)
 
 
+@dp.callback_query(F.data == "custom_recipes_back_to_first")
+async def handle_custom_recipes_go_back(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    await callback.answer("returning to crafting recipe")
+
+    user_data = await state.get_data()
+    number_message = user_data.get("custom_recipe_number_message")
+    await state.set_state(RecipeFlow.writing_custom_recipe)
+
+    text = CUSTOM_RECIPE_TEXT
+
+    first_message = await callback.message.edit_text(text=text,
+                                                     reply_markup=INLINE_KEYBOARD_CUSTOM_RECIPE_MESSAGE)
+
+    await state.update_data(custom_recipe_first_message = first_message)
+    await bot.delete_message(chat_id=number_message.chat.id,
+                             message_id=number_message.message_id)
+
+@dp.callback_query(F.data == "custom_recipes_main_menu")
+async def handle_custom_recipes_main_menu(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    await callback.answer("returning to main menu")
+    user_data = await state.get_data()
+
+    number_message = user_data.get("custom_recipe_number_message")
+
+    await state.clear()
+
+    await bot.delete_message(chat_id=callback.message.chat.id,
+                             message_id=callback.message.message_id)
+    await bot.delete_message(chat_id=number_message.chat.id,
+                             message_id=number_message.message_id)
+
+    await send_to_main_menu(
+        chat_id = callback.message.chat.id,
+        full_name = callback.from_user.full_name,
+        state = state,
+        bot = bot
+    )
+
+
 
 # @dp.callback_query(F.data.in_({"pressed <-","pressed ->"}))
 # async def handle_dishideas_scroll(callback: CallbackQuery, state: FSMContext):
@@ -479,8 +529,9 @@ async def generate_custom_recipe(message: Message, state: FSMContext, bot: Bot):
                              message_id=message.message_id)
 
 
-    await message.answer(text=CUSTOM_RECIPE_TEXT,
+    first_message = await message.answer(text=CUSTOM_RECIPE_TEXT,
                          reply_markup=INLINE_KEYBOARD_CUSTOM_RECIPE_MESSAGE)
+    await state.update_data(custom_recipe_first_message=first_message)
 
 
 
