@@ -71,7 +71,7 @@ REPLY_CUSTOM_DISH_IDEAS_KEYBOARD = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-IDEAS_INDEX = {
+RANDOM_IDEAS_INDEX = {
     '1️⃣':0,
     '2️⃣':1,
     '3️⃣':2,
@@ -83,6 +83,16 @@ IDEAS_INDEX = {
     '9️⃣':8,
     '🔟':9
 }
+
+
+CUSTOM_IDEAS_INDEX = {
+    '1️⃣':0,
+    '2️⃣':1,
+    '3️⃣':2,
+    '4️⃣':3,
+    '5️⃣':4,
+}
+
 
 MAIN_MENU_KEYBOARD = ReplyKeyboardMarkup(
     keyboard=[
@@ -112,6 +122,16 @@ DISH_IDEAS_RECIPE_KEYBOARD = InlineKeyboardMarkup(
         ]
     ]
 )
+
+CUSTOM_DISH_IDEAS_RECIPE_KEYBOARD = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(text='⬅',callback_data="custom_recipe_go_back"),
+            InlineKeyboardButton(text='⭐',callback_data="recipe_add_fav")
+        ]
+    ]
+)
+
 
 INLINE_KEYBOARD_CUSTOM_RECIPE_MESSAGE = InlineKeyboardMarkup(
     inline_keyboard=[
@@ -226,13 +246,14 @@ def generate_recipe(recipe_name:str):
 def custom_recipe_valid_check(user_input:str):
     answer_dict = json_completion(f"""
     Check if the following input is a valid list of food ingredients and/or description of the dish.
+    It can contain phrases like 'i want to make', but it has to be a description or ingredients for a dish.
     Input: '{user_input}'.
     Return a json array in the format {{answer:True/False}}.
     """)
     answer = answer_dict.get("answer",bool)
     return answer
 
-def generate_recipe_custom(description:str):
+def get_custom_dish_ideas(description:str):
     dish_dict = json_completion(f"""
     Return a json array of 5 dish ideas using this input : '{description}' as the preferences for the dish.
     All dishes have to contain those ingredients and/or be the type of a dish that is described in input.
@@ -252,17 +273,19 @@ async def take_custom_recipe_input(message: Message, state: FSMContext, bot: Bot
 
     if custom_recipe_valid_check(user_input):
 
-        dishes = generate_recipe_custom(user_input)
+        dishes = get_custom_dish_ideas(user_input)
         text = format_custom_dish_ideas(dishes)
-        await message.answer(text=text,
+        inline_message = await message.answer(text=text,
                              reply_markup=INLINE_CUSTOM_DISH_IDEAS_KEYBOARD)
-        numbers_message = await message.answer(text=f"{html.bold("USE NUMBERS FROM 1️⃣TO 5️⃣ TO GENERATE COMPLETE RECIPE")}",
+        reply_message = await message.answer(text=f"{html.bold("USE NUMBERS FROM 1️⃣TO 5️⃣ TO GENERATE COMPLETE RECIPE")}",
                              reply_markup=REPLY_CUSTOM_DISH_IDEAS_KEYBOARD)
         await state.set_state(RecipeFlow.waiting_for_custom_dish_idea)
 
         await bot.delete_message(chat_id=message.chat.id,
                                  message_id=first_message.message_id)
-        await state.update_data(custom_recipe_number_message = numbers_message)
+        await state.update_data(custom_recipe_reply_message = reply_message)
+        await state.update_data(custom_recipe_inline_message = inline_message)
+        await state.update_data(custom_dish_ideas = dishes)
 
     else:
 
@@ -380,12 +403,32 @@ async def handle_recipe_go_back(callback: CallbackQuery, state: FSMContext):
                                      reply_markup=INLINE_DISH_IDEAS_KEYBOARD)
 
 
+@dp.callback_query(F.data == "custom_recipe_go_back")
+async def handle_custom_recipe_go_back(callback: CallbackQuery, state: FSMContext):
+    await callback.answer("returning to suggested recipes")
+
+    user_data = await state.get_data()
+    await state.set_state(RecipeFlow.waiting_for_custom_dish_idea)
+    dishes = user_data.get("custom_dish_ideas",[])
+    print(dishes)
+    text = format_custom_dish_ideas(dishes)
+
+    reply_message = await callback.message.answer(text=f"{html.bold("USE NUMBERS FROM 1️⃣TO 5️⃣ TO GENERATE COMPLETE RECIPE")}",
+                             reply_markup=REPLY_CUSTOM_DISH_IDEAS_KEYBOARD)
+    await state.update_data(custom_recipe_reply_message = reply_message)
+
+
+    await callback.message.edit_text(text=text,
+                                     reply_markup=INLINE_CUSTOM_DISH_IDEAS_KEYBOARD)
+
+
+
 @dp.callback_query(F.data == "custom_recipes_back_to_first")
 async def handle_custom_recipes_go_back(callback: CallbackQuery, state: FSMContext, bot: Bot):
     await callback.answer("returning to crafting recipe")
 
     user_data = await state.get_data()
-    number_message = user_data.get("custom_recipe_number_message")
+    number_message = user_data.get("custom_recipe_reply_message")
     await state.set_state(RecipeFlow.writing_custom_recipe)
 
     text = CUSTOM_RECIPE_TEXT
@@ -402,7 +445,7 @@ async def handle_custom_recipes_main_menu(callback: CallbackQuery, state: FSMCon
     await callback.answer("returning to main menu")
     user_data = await state.get_data()
 
-    number_message = user_data.get("custom_recipe_number_message")
+    number_message = user_data.get("custom_recipe_reply_message")
 
     await state.clear()
 
@@ -535,7 +578,7 @@ async def generate_custom_recipe(message: Message, state: FSMContext, bot: Bot):
 
 
 
-@dp.message(F.text.in_(IDEAS_INDEX.keys()), RecipeFlow.waiting_for_dish_idea)
+@dp.message(F.text.in_(RANDOM_IDEAS_INDEX.keys()), RecipeFlow.waiting_for_dish_idea)
 async def generate_show_suggest_recipe(message: Message, state: FSMContext, bot: Bot):
     user_data = await state.get_data()
     dishes = user_data.get("used_recipes_ideas",[])
@@ -543,7 +586,7 @@ async def generate_show_suggest_recipe(message: Message, state: FSMContext, bot:
 
     await state.set_state(RecipeFlow.watching_recipe)
 
-    index = IDEAS_INDEX[str(message.text)]
+    index = RANDOM_IDEAS_INDEX[str(message.text)]
 
     unformatted_recipe = generate_recipe(dishes[index]).replace("\\n","\n")
     text = f"{html.bold(dishes[index])}👨‍🍳\n"
@@ -569,6 +612,42 @@ async def generate_show_suggest_recipe(message: Message, state: FSMContext, bot:
                              message_id=user_data.get("suggest_recipe_reply_message",int)
                              )
 
+
+
+@dp.message(F.text.in_(CUSTOM_IDEAS_INDEX.keys()),RecipeFlow.waiting_for_custom_dish_idea)
+async def generate_show_custom_recipe(message: Message, state: FSMContext, bot: Bot):
+    user_data = await state.get_data()
+    dishes = user_data.get("custom_dish_ideas",[])
+    inline_message = user_data.get("custom_recipe_inline_message",str)
+    reply_message = user_data.get("custom_recipe_reply_message",str)
+
+    await state.set_state(RecipeFlow.watching_recipe)
+
+    index = CUSTOM_IDEAS_INDEX[str(message.text)]
+
+    unformatted_recipe = generate_recipe(dishes[index]).replace("\\n","\n")
+    text = f"{html.bold(dishes[index])}👨‍🍳\n"
+    text += unformatted_recipe
+    text += """
+    ⬅ - go back to dish ideas
+    ⭐- add this recipe to favourite
+    """
+
+    clear_msg = await message.answer(text='thinking...',reply_markup=ReplyKeyboardRemove())
+
+
+    await inline_message.edit_text(text=text,
+                         parse_mode="HTML",
+                         reply_markup=CUSTOM_DISH_IDEAS_RECIPE_KEYBOARD)
+
+
+    await bot.delete_message(chat_id=message.chat.id,
+                             message_id=message.message_id)
+    await bot.delete_message(chat_id=message.chat.id,
+                             message_id=clear_msg.message_id)
+    await bot.delete_message(chat_id=message.chat.id,
+                             message_id=reply_message.message_id
+                             )
 
 
 @dp.message(F.text == '❓', StateFilter(None))
