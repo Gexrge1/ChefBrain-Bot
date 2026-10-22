@@ -5,10 +5,11 @@ from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, html, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart,Command, StateFilter
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove, keyboard_button, message, reply_keyboard_markup
+from aiogram.filters import CommandStart, StateFilter
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from aiogram.fsm.state import State,StatesGroup
 from aiogram.fsm.context import FSMContext
+from aiogram.utils.keyboard import InlineKeyboardBuilder,ReplyKeyboardBuilder
 
 from groq import Groq
 
@@ -244,33 +245,43 @@ def format_dish_ideas(dishes:list):
         text += f"{html.bold(str(index))}. {dish}\n"
 
     text += f"""
-    {html.bold("🔃 - refresh reicipes list")}
+    {html.bold("🔃 - refresh recipes list")}
     {html.bold("❌ - go back to main menu")}
         """
     return text
 
-def format_fav_dishes(step=1):
-    high = 10*step
+async def format_fav_dishes(state: FSMContext, page=1):
+    high = 10*page
     low = high-10
     dishes = list(itertools.islice(test_dict.keys(),low,high))
+    await state.update_data(fav_dishes_page_content = dishes)
+    # data = await state.get_data()
+    # print(data.get("fav_dishes_page_content"))
+
 
     text = f"{html.bold("⭐Your favourite recipes:")}\n"
     for index,dish in enumerate(dishes,start=1):
         text += f"{html.bold(str(index))}. {dish}\n"
+
     if len(test_dict) < 10:
         text += f"""
         {html.bold("❌ - go back to main menu")}
         """
 
-    elif len(test_dict) > 10 and step == 1:
+    elif len(test_dict) > 10 and page == 1:
         text += f"""
         {html.bold("➡ - go to the next page")}
         {html.bold("❌ - go back to main menu")}
         """
+    elif len(test_dict) < 10*page:
+        text += f"""
+        {html.bold("⬅ - go to the previous page")}
+        {html.bold("❌ - go back to main menu")}
+        """
     else:
         text += f"""
-        {html.bold("⬅ - go to previous page")}
-        {html.bold("➡ - go to next page")}
+        {html.bold("⬅ - go to the previous page")}
+        {html.bold("➡ - go to the next page")}
         {html.bold("❌ - go back to main menu")}
         """
 
@@ -350,6 +361,63 @@ async def take_custom_recipe_input(message: Message, state: FSMContext, bot: Bot
         await state.update_data(custom_recipe_wrong_description = custom_recipe_wrong_description)
 
 
+async def fav_dish_inline_keyboard(state: FSMContext):
+    user_data = await state.get_data()
+    page = user_data.get("fav_dish_page",int)
+
+    if page == 1:
+        buttons = {
+            '➡': "fav_dish_next_page",
+            '❌': "fav_dish_main_menu"
+        }
+    elif len(test_dict) > 10*page:
+        buttons = {
+            '⬅': "fav_dish_previous_page",
+            '➡': "fav_dish_next_page",
+            '❌': "fav_dish_main_menu"
+        }
+    else:
+        buttons = {
+            '⬅': "fav_dish_previous_page",
+            '❌': "fav_dish_main_menu"
+        }
+
+
+    builder = InlineKeyboardBuilder()
+
+    for key,value in buttons.items():
+        builder.button(
+            text=key,
+            callback_data=value
+        )
+
+    return builder.as_markup()
+
+async def fav_dish_reply_keyboard(state: FSMContext):
+    user_data = await state.get_data()
+    dishes = user_data.get("fav_dishes_page_content",list)
+    buttons = list(RANDOM_IDEAS_INDEX.keys())
+
+    builder = ReplyKeyboardBuilder()
+
+    for index in range(len(dishes)):
+        print(index)
+        builder.button(
+            text= buttons[index]
+        )
+    builder.adjust(5)
+    return builder.as_markup(resize_keyboard = True)
+
+async def fav_dish_reply_message(state: FSMContext):
+    user_data = await state.get_data()
+    dishes = user_data.get("fav_dishes_page_content",list)
+
+    numbers = list(RANDOM_IDEAS_INDEX.keys())
+
+    max_number = numbers[len(dishes)-1]
+    text = f"USE NUMBERS FROM 1️⃣TO {max_number} TO GENERATE COMPLETE RECIPE"
+
+    return text
 
 #NOTE: inline keyboard logic
 
@@ -539,6 +607,46 @@ async def handle_add_fav_recipe(callback: CallbackQuery, state: FSMContext):
 #         await callback.answer("going forward")
 
 
+
+@dp.callback_query(F.data == "fav_dish_next_page")
+async def handle_fav_dish_next_page(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    user_data = await state.get_data()
+    page = user_data.get("fav_dish_page",int)
+
+    callback.answer()
+    await state.update_data(fav_dish_page = page+1)
+    text = await format_fav_dishes(state,page=page+1)
+    inline_message = await callback.message.edit_text(text=text,
+                                     reply_markup=await fav_dish_inline_keyboard(state))
+
+    await bot.delete_message(message_id=user_data.get("fav_recipe_reply_message"),
+                             chat_id=callback.message.chat.id)
+
+    reply_message = await callback.message.answer(text=f"{html.bold(await fav_dish_reply_message(state))}",
+                         reply_markup=await fav_dish_reply_keyboard(state))
+
+    await state.update_data(fav_recipe_reply_message = reply_message.message_id)
+    await state.update_data(fav_recipe_inline_message = inline_message)
+
+
+
+@dp.callback_query(F.data == "fav_dish_previous_page")
+async def handle_fav_dish_previous_page(callback: CallbackQuery, state: FSMContext):
+    user_data = await state.get_data()
+    page = user_data.get("fav_dish_page",int)
+
+    callback.answer()
+    await state.update_data(fav_dish_page = page-1)
+    text = await format_fav_dishes(state,page=page-1)
+
+    await callback.message.edit_text(text=text,
+                                     reply_markup=await fav_dish_inline_keyboard(state))
+
+
+
+
+
+
 #NOTE: bot commands
 
 
@@ -723,6 +831,8 @@ async def show_help(message: Message, state: FSMContext, bot: Bot):
 async def show_fav_recipes(message: Message, state: FSMContext, bot: Bot):
     user_data = await state.get_data()
 
+    await state.update_data(fav_dish_page = 1)
+
     old_menu_id = user_data.get("menu_message_id")
 
     if old_menu_id:
@@ -733,18 +843,18 @@ async def show_fav_recipes(message: Message, state: FSMContext, bot: Bot):
 
     await state.set_state(RecipeFlow.waiting_for_fav_dish_idea)
 
-    text = format_fav_dishes()
+    text = await format_fav_dishes(state,page=1)
 
     clear_msg = await message.answer(text='thinking...',reply_markup=ReplyKeyboardRemove())
 
     inline_message = await message.answer(text=text,
-                         reply_markup=INLINE_DISH_IDEAS_KEYBOARD)
+                         reply_markup=await fav_dish_inline_keyboard(state))
 
-    reply_message = await message.answer(text=f"{html.bold("USE NUMBERS FROM 1️⃣TO 🔟 TO GENERATE COMPLETE RECIPE")}",
-                         reply_markup=REPLY_DISH_IDEAS_KEYBOARD)
+    reply_message = await message.answer(text=f"{html.bold(await fav_dish_reply_message(state))}",
+                         reply_markup=await fav_dish_reply_keyboard(state))
 
-    # await state.update_data(suggest_recipe_reply_message = reply_message.message_id)
-    # await state.update_data(suggest_recipe_inline_message = inline_message)
+    await state.update_data(fav_recipe_reply_message = reply_message.message_id)
+    await state.update_data(fav_recipe_inline_message = inline_message)
 
     await bot.delete_message(chat_id=message.chat.id,
                              message_id=message.message_id)
@@ -775,6 +885,7 @@ async def send_to_main_menu(chat_id:int, full_name:str, state: FSMContext, bot: 
     """
     menu_message = await bot.send_message(text=text,chat_id=chat_id,reply_markup=MAIN_MENU_KEYBOARD)
     await state.update_data(menu_message_id = menu_message.message_id)
+    await state.clear()
 
 
 
