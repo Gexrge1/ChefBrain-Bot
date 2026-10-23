@@ -16,28 +16,56 @@ from groq import Groq
 
 
 test_dict = {
-    "recipe1":{"recipe_content"},
-    "recipe2":{"recipe_content"},
-    "recipe3":{"recipe_content"},
-    "recipe4":{"recipe_content"},
-    "recipe5":{"recipe_content"},
-    "recipe6":{"recipe_content"},
-    "recipe7":{"recipe_content"},
-    "recipe8":{"recipe_content"},
-    "recipe9":{"recipe_content"},
-    "recipe10":{"recipe_content"},
-    "recipe11":{"recipe_content"},
-    "recipe12":{"recipe_content"},
-    "recipe13":{"recipe_content"},
-    "recipe14":{"recipe_content"},
-    "recipe15":{"recipe_content"},
-    "recipe16":{"recipe_content"},
-    "recipe17":{"recipe_content"},
-    "recipe18":{"recipe_content"},
-    "recipe19":{"recipe_content"},
-    "recipe20":{"recipe_content"},
-    "recipe21":{"recipe_content"},
-}
+    "recipe1":"""Ingredients:
+- 1 tablespoon vegetable oil
+- 1 teaspoon ground cumin
+- 1 teaspoon ground coriander
+- 1 teaspoon garam masala
+- 1 teaspoon smoked paprika
+- 1/2 teaspoon cayenne pepper (adjust to taste)
+- 1 medium onion, finely diced
+- 3 cloves garlic, minced
+- 1 tablespoon fresh ginger, grated
+- 1 green chili, seeded and finely chopped (optional)
+- 1 can (400g) chickpeas, drained and rinsed
+- 1 can (400g) diced tomatoes
+- 1 cup vegetable broth
+- 1 teaspoon turmeric
+- Salt to taste
+- 1 tablespoon lemon juice
+- 2 tablespoons fresh cilantro, chopped
+- 1/2 cup coconut milk (optional for creaminess)
+
+Instructions:
+1. Heat the oil in a large skillet or pot over medium heat.
+2. Add cumin, coriander, garam masala, smoked paprika, and cayenne pepper. Stir for 30 seconds until fragrant.
+3. Add onion, garlic, ginger, and green chili if using. Cook until the onion becomes translucent, about 5 minutes.
+4. Stir in the chickpeas, diced tomatoes, vegetable broth, and turmeric. Bring the mixture to a simmer.
+5. Reduce heat to low, cover, and let it simmer for 15–20 minutes, or until the sauce thickens slightly.
+6. Season with salt, then stir in lemon juice and coconut milk if desired. Simmer for another 5 minutes.
+7. Remove from heat, stir in chopped cilantro, and adjust seasoning if needed.
+8. Serve hot over steamed rice or with warm naan bread. Enjoy!""",
+    "recipe2":"recipe_content",
+    "recipe3":"recipe_content",
+    "recipe4":"recipe_content",
+    "recipe5":"recipe_content",
+    "recipe6":"recipe_content",
+    "recipe7":"recipe_content",
+    "recipe8":"recipe_content",
+    "recipe9":"recipe_content",
+    "recipe10":"recipe_content",
+    "recipe11":"recipe_content",
+    "recipe12":"recipe_content",
+    "recipe13":"recipe_content",
+    "recipe14":"recipe_content",
+    "recipe15":"recipe_content",
+    "recipe16":"recipe_content",
+    "recipe17":"recipe_content",
+    "recipe18":"recipe_content",
+    "recipe19":"recipe_content",
+    "recipe20":"recipe_content",
+    "recipe21":"recipe_content",
+    }
 
 load_dotenv()
 TOKEN = getenv("BOT_TOKEN")
@@ -160,6 +188,14 @@ CUSTOM_DISH_IDEAS_RECIPE_KEYBOARD = InlineKeyboardMarkup(
     ]
 )
 
+FAV_DISH_RECIPE_KEYBOARD = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(text='⬅',callback_data="fav_recipe_go_back"),
+            InlineKeyboardButton(text='💔',callback_data="recipe_remove_fav")
+        ]
+    ]
+)
 
 INLINE_KEYBOARD_CUSTOM_RECIPE_MESSAGE = InlineKeyboardMarkup(
     inline_keyboard=[
@@ -401,7 +437,7 @@ async def fav_dish_reply_keyboard(state: FSMContext):
     builder = ReplyKeyboardBuilder()
 
     for index in range(len(dishes)):
-        print(index)
+        # print(index)
         builder.button(
             text= buttons[index]
         )
@@ -414,8 +450,11 @@ async def fav_dish_reply_message(state: FSMContext):
 
     numbers = list(RANDOM_IDEAS_INDEX.keys())
 
-    max_number = numbers[len(dishes)-1]
-    text = f"USE NUMBERS FROM 1️⃣TO {max_number} TO GENERATE COMPLETE RECIPE"
+    if len(dishes) == 1:
+        text = f"PRESS 1️⃣ TO GENERATE A COMPLETE RECIPE"
+    else:
+        max_number = numbers[len(dishes)-1]
+        text = f"USE NUMBERS FROM 1️⃣TO {max_number} TO GENERATE COMPLETE RECIPE"
 
     return text
 
@@ -546,6 +585,24 @@ async def handle_custom_recipe_go_back(callback: CallbackQuery, state: FSMContex
     await callback.message.edit_text(text=text,
                                      reply_markup=INLINE_CUSTOM_DISH_IDEAS_KEYBOARD)
 
+@dp.callback_query(F.data == "fav_recipe_go_back")
+async def handle_fav_recipe_go_back(callback: CallbackQuery, state: FSMContext):
+    await callback.answer("returning to favourite recipes")
+
+    user_data = await state.get_data()
+    await state.set_state(RecipeFlow.waiting_for_fav_dish_idea)
+    page = user_data.get("fav_dish_page",int)
+
+    text = await format_fav_dishes(state,page=page)
+
+    reply_message = await callback.message.answer(text=f"{html.bold(await fav_dish_reply_message(state))}",
+                         reply_markup=await fav_dish_reply_keyboard(state))
+
+    await state.update_data(fav_recipe_reply_message = reply_message.message_id)
+
+
+    await callback.message.edit_text(text=text,
+                                     reply_markup=await fav_dish_inline_keyboard(state))
 
 
 @dp.callback_query(F.data == "custom_recipes_back_to_first")
@@ -631,7 +688,7 @@ async def handle_fav_dish_next_page(callback: CallbackQuery, state: FSMContext, 
 
 
 @dp.callback_query(F.data == "fav_dish_previous_page")
-async def handle_fav_dish_previous_page(callback: CallbackQuery, state: FSMContext):
+async def handle_fav_dish_previous_page(callback: CallbackQuery, state: FSMContext, bot: Bot):
     user_data = await state.get_data()
     page = user_data.get("fav_dish_page",int)
 
@@ -639,11 +696,43 @@ async def handle_fav_dish_previous_page(callback: CallbackQuery, state: FSMConte
     await state.update_data(fav_dish_page = page-1)
     text = await format_fav_dishes(state,page=page-1)
 
-    await callback.message.edit_text(text=text,
+    inline_message = await callback.message.edit_text(text=text,
                                      reply_markup=await fav_dish_inline_keyboard(state))
 
+    await bot.delete_message(message_id=user_data.get("fav_recipe_reply_message"),
+                             chat_id=callback.message.chat.id)
+
+    reply_message = await callback.message.answer(text=f"{html.bold(await fav_dish_reply_message(state))}",
+                         reply_markup=await fav_dish_reply_keyboard(state))
+
+    await state.update_data(fav_recipe_reply_message = reply_message.message_id)
+    await state.update_data(fav_recipe_inline_message = inline_message)
 
 
+@dp.callback_query(F.data == "fav_dish_main_menu")
+async def handle_fav_dish_main_menu(callback: CallbackQuery, bot: Bot, state: FSMContext):
+    await callback.answer()
+
+    user_data = await state.get_data()
+    reply_message = user_data.get("fav_recipe_reply_message")
+
+    await bot.delete_message(
+        chat_id=callback.message.chat.id,
+        message_id=callback.message.message_id
+    )
+
+    await bot.delete_message(chat_id=callback.message.chat.id,
+                             message_id=reply_message)
+
+    await state.clear()
+
+
+    await send_to_main_menu(
+        chat_id = callback.message.chat.id,
+        full_name = callback.from_user.full_name,
+        state = state,
+        bot = bot
+    )
 
 
 
@@ -861,6 +950,42 @@ async def show_fav_recipes(message: Message, state: FSMContext, bot: Bot):
     await bot.delete_message(chat_id=message.chat.id,
                              message_id=clear_msg.message_id)
 
+@dp.message(F.text.in_(RANDOM_IDEAS_INDEX.keys()), RecipeFlow.waiting_for_fav_dish_idea)
+async def generate_show_fav_recipe(message: Message, state: FSMContext, bot: Bot):
+    user_data = await state.get_data()
+    dishes = user_data.get("fav_dishes_page_content",[])
+    inline_message = user_data.get("fav_recipe_inline_message",str)
+
+    await state.set_state(RecipeFlow.watching_recipe)
+
+    index = RANDOM_IDEAS_INDEX[str(message.text)]
+    print(test_dict[dishes[index]])
+    recipe = str(test_dict[dishes[index]])
+
+    text = f"{html.bold(dishes[index])}👨‍🍳\n"
+    text += recipe
+    text += """
+    ⬅ - go back to favourite dishes
+    💔 - remove from favourites
+    """
+
+    await state.update_data(current_recipe_name = dishes[index])
+
+    clear_msg = await message.answer(text='thinking...',reply_markup=ReplyKeyboardRemove())
+
+
+    await inline_message.edit_text(text=text,
+                         parse_mode="HTML",
+                         reply_markup=FAV_DISH_RECIPE_KEYBOARD)
+
+
+    await bot.delete_message(chat_id=message.chat.id,
+                             message_id=message.message_id)
+    await bot.delete_message(chat_id=message.chat.id,
+                             message_id=clear_msg.message_id)
+    await bot.delete_message(chat_id=message.chat.id,
+                             message_id=user_data.get("fav_recipe_reply_message",int)
+                             )
 
 
 #NOTE: cornercases
@@ -884,8 +1009,8 @@ async def send_to_main_menu(chat_id:int, full_name:str, state: FSMContext, bot: 
     ❓ - help
     """
     menu_message = await bot.send_message(text=text,chat_id=chat_id,reply_markup=MAIN_MENU_KEYBOARD)
-    await state.update_data(menu_message_id = menu_message.message_id)
     await state.clear()
+    await state.update_data(menu_message_id = menu_message.message_id)
 
 
 
