@@ -289,7 +289,8 @@ def format_dish_ideas(dishes:list):
 async def format_fav_dishes(state: FSMContext, page=1):
     high = 10*page
     low = high-10
-    dishes = list(itertools.islice(test_dict.keys(),low,high))
+    dishes = list(itertools.islice(test_dict2.keys(),low,high))
+    print(dishes)
     await state.update_data(fav_dishes_page_content = dishes)
     # data = await state.get_data()
     # print(data.get("fav_dishes_page_content"))
@@ -299,17 +300,17 @@ async def format_fav_dishes(state: FSMContext, page=1):
     for index,dish in enumerate(dishes,start=1):
         text += f"{html.bold(str(index))}. {dish}\n"
 
-    if len(test_dict) < 10:
+    if len(test_dict2) < 10:
         text += f"""
         {html.bold("❌ - go back to main menu")}
         """
 
-    elif len(test_dict) > 10 and page == 1:
+    elif len(test_dict2) > 10 and page == 1:
         text += f"""
         {html.bold("➡ - go to the next page")}
         {html.bold("❌ - go back to main menu")}
         """
-    elif len(test_dict) < 10*page:
+    elif len(test_dict2) < 10*page:
         text += f"""
         {html.bold("⬅ - go to the previous page")}
         {html.bold("❌ - go back to main menu")}
@@ -401,12 +402,16 @@ async def fav_dish_inline_keyboard(state: FSMContext):
     user_data = await state.get_data()
     page = user_data.get("fav_dish_page",int)
 
-    if page == 1:
+    if page == 1 and len(test_dict2) > 10*page:
         buttons = {
             '➡': "fav_dish_next_page",
             '❌': "fav_dish_main_menu"
         }
-    elif len(test_dict) > 10*page:
+    elif page == 1 and len(test_dict2) < 10*page:
+        buttons = {
+            '❌': "fav_dish_main_menu"
+        }
+    elif len(test_dict2) > 10*page:
         buttons = {
             '⬅': "fav_dish_previous_page",
             '➡': "fav_dish_next_page",
@@ -451,10 +456,10 @@ async def fav_dish_reply_message(state: FSMContext):
     numbers = list(RANDOM_IDEAS_INDEX.keys())
 
     if len(dishes) == 1:
-        text = f"PRESS 1️⃣ TO GENERATE A COMPLETE RECIPE"
+        text = f"PRESS 1️⃣ TO SHOW A COMPLETE RECIPE"
     else:
         max_number = numbers[len(dishes)-1]
-        text = f"USE NUMBERS FROM 1️⃣TO {max_number} TO GENERATE COMPLETE RECIPE"
+        text = f"USE NUMBERS FROM 1️⃣TO {max_number} TO SHOW A COMPLETE RECIPE"
 
     return text
 
@@ -650,9 +655,20 @@ async def handle_add_fav_recipe(callback: CallbackQuery, state: FSMContext):
     user_data = await state.get_data()
 
     await state.update_data(fav_recipe_dict = {user_data.get("current_recipe_name"):user_data.get("current_recipe")})
-    user_data = await state.get_data()
-    print(user_data.get("fav_recipe_dict"))
+    global test_dict2
+    test_dict2 = {user_data.get("current_recipe_name"):user_data.get("current_recipe")}
+    print(test_dict2)
 
+    # user_data = await state.get_data()
+    # print(user_data.get("fav_recipe_dict"))
+
+@dp.callback_query(F.data == "recipe_remove_fav")
+async def handle_remove_fav_recipe(callback: CallbackQuery, state: FSMContext):
+    await callback.answer("Recipe was removed from your favourite recipes list")
+    user_data = await state.get_data()
+    current_recipe = user_data.get("current_recipe_name")
+
+    test_dict2.pop(current_recipe)
 
 # @dp.callback_query(F.data.in_({"pressed <-","pressed ->"}))
 # async def handle_dishideas_scroll(callback: CallbackQuery, state: FSMContext):
@@ -959,8 +975,8 @@ async def generate_show_fav_recipe(message: Message, state: FSMContext, bot: Bot
     await state.set_state(RecipeFlow.watching_recipe)
 
     index = RANDOM_IDEAS_INDEX[str(message.text)]
-    print(test_dict[dishes[index]])
-    recipe = str(test_dict[dishes[index]])
+    print(test_dict2[dishes[index]])
+    recipe = str(test_dict2[dishes[index]])
 
     text = f"{html.bold(dishes[index])}👨‍🍳\n"
     text += recipe
