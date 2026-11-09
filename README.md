@@ -52,8 +52,8 @@ A Telegram bot that uses AI to suggest recipes, generate cooking instructions, a
 - [x] Inline keyboard logic for recipes
 - [x] Reply keyboard logic for the main menu and recipes
 - [x] Generation of recipes based on user-provided input
-- [ ] Favourite recipes
+- [x] Favourite recipes
 - [ ] User preferences (allergies, diet, spice level)
 - [ ] Database integration
-- [ ] Multi-language support
-- [ ] Bot startup information
+- [x] Multi-language support
+- [x] Bot startup information
