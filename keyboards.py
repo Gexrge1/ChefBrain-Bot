@@ -75,6 +75,12 @@ CUSTOM_IDEAS_INDEX = {
     '5️⃣':4,
 }
 
+LANGUAGE_INDEX = {
+    '1️⃣':"en",
+    '2️⃣':"pl",
+    '3️⃣':"ru"
+}
+
 
 MAIN_MENU_KEYBOARD = ReplyKeyboardMarkup(
     keyboard=[
@@ -86,6 +92,16 @@ MAIN_MENU_KEYBOARD = ReplyKeyboardMarkup(
     ]
 ],
     resize_keyboard=True
+)
+
+LANGUAGE_KEYBOARD = ReplyKeyboardMarkup(
+    keyboard=[
+        [
+            KeyboardButton(text='1️⃣'),
+            KeyboardButton(text='2️⃣'),
+            KeyboardButton(text='3️⃣')
+        ]
+    ]
 )
 
 FAQ_KEYBOARD = InlineKeyboardMarkup(

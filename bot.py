@@ -14,6 +14,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder,ReplyKeyboardBuilder
 from groq import Groq
 
 from keyboards import *
+from chef_database import *
 from locales import TRANSLATIONS
 
 test_dict = {
@@ -78,8 +79,6 @@ LLM = Groq(
 #NOTE: response text formatting
 
 
-lang = "pl"
-
 def t(key: str, language: str = "en", **kwargs) -> str:
     translations = TRANSLATIONS.get(language,TRANSLATIONS["en"])
 
@@ -99,6 +98,7 @@ class RecipeFlow(StatesGroup):
     writing_custom_recipe = State()
     waiting_for_custom_dish_idea = State()
     waiting_for_fav_dish_idea = State()
+    selecting_language = State()
 
 
 
@@ -607,17 +607,54 @@ async def handle_fav_dish_main_menu(callback: CallbackQuery, bot: Bot, state: FS
 
 @dp.message(CommandStart())
 async def command_start_handler(message: Message, state: FSMContext, bot: Bot) -> None:
-    await send_to_main_menu(
-        chat_id = message.chat.id,
+
+    await dbcreate_tables()
+
+    await ask_for_language(
         full_name = message.from_user.full_name,
         state = state,
-        bot = bot
+        bot = bot,
+        user_id = message.from_user.id,
+        chat_id = message.chat.id
     )
 
+    # await send_to_main_menu(
+    #     chat_id = message.chat.id,
+    #     full_name = message.from_user.full_name,
+    #     state = state,
+    #     bot = bot
+    # )
+    #
 
 
 
 #NOTE: reply keyboards handlers
+
+@dp.message(F.text.in_(LANGUAGE_INDEX.keys()), RecipeFlow.selecting_language)
+async def handle_selecting_language(message: Message, state: FSMContext, bot: Bot):
+
+    selected_language = LANGUAGE_INDEX[str(message.text)]
+
+    await dbupdate_user_language(language=selected_language,user_id=message.from_user.id)
+
+    if selected_language == "en":
+        text = "Language set to English... Returning to main menu"
+    elif selected_language == "pl":
+        text = "Język ustawiony na polski... Powrót do menu głównego"
+    elif selected_language == "ru":
+        text = "Язык установлен на русский... Возврат к главному меню"
+
+    await message.answer(text=text)
+
+    await send_to_main_menu(
+            chat_id = message.chat.id,
+            full_name = message.from_user.full_name,
+            state = state,
+            bot = bot,
+            message = message
+        )
+
+
 
 @dp.message(F.text == "🧠", StateFilter(None))
 async def show_suggest_recipe(message: Message, state: FSMContext, bot: Bot):
@@ -855,11 +892,22 @@ async def handle_cornercases2(message: Message):
     await message.answer("You cant use this command here")
 
 
-async def send_to_main_menu(chat_id:int, full_name:str, state: FSMContext, bot: Bot):
-    text = t("main_menu_text",lang,full_name = html.bold(html.quote(full_name)))
+async def send_to_main_menu(message: Message, chat_id:int, full_name:str, state: FSMContext, bot: Bot):
+    text = t("main_menu_text",(await state.get_data()).get("lang", "en"),full_name = html.bold(html.quote(full_name)))
     menu_message = await bot.send_message(text=text,chat_id=chat_id,reply_markup=MAIN_MENU_KEYBOARD)
     await state.clear()
     await state.update_data(menu_message_id = menu_message.message_id)
+    await state.update_data(lang = await dbget_user_language(user_id=message.from_user.id))
+
+
+async def ask_for_language(full_name: str, state: FSMContext, bot: Bot, user_id: int, chat_id: int):
+    text = f"Hello! {full_name}\n Select your language:\n1.English\n2.Polski\n3.Русский"
+
+    await state.set_state(RecipeFlow.selecting_language)
+    await dbadd_user(user_id=user_id)
+
+    await bot.send_message(text=text,chat_id=chat_id,reply_markup=LANGUAGE_KEYBOARD)
+
 
 
 
