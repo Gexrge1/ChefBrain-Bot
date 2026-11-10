@@ -48,12 +48,12 @@ TRANSLATIONS = {
         "callback_recipe_was_removed_from_fav": "Recipe was removed from your favorite recipes list",
 
         "watching_recipe_buttons_text": dedent("""
-            \n\n⬅ - go back to dish ideas
+            ⬅ - go back to dish ideas
             ⭐ - add this recipe to favorite
         """).strip(),
 
         "watching_fav_recipe_buttons_text": dedent("""
-            \n\n⬅ - go back to favorite dishes
+            ⬅ - go back to favorite dishes
             💔 - remove from favorites
         """).strip(),
 
@@ -121,12 +121,12 @@ TRANSLATIONS = {
         "callback_recipe_was_removed_from_fav": "Рецепт удалён из списка избранного",
 
         "watching_recipe_buttons_text": dedent("""
-            \n\n⬅ - вернуться к идеям блюд
+            ⬅ - вернуться к идеям блюд
             ⭐ - добавить этот рецепт в избранное
         """).strip(),
 
         "watching_fav_recipe_buttons_text": dedent("""
-            \n\n⬅ - вернуться к избранным блюдам
+            ⬅ - вернуться к избранным блюдам
             💔 - удалить из избранного
         """).strip(),
 
@@ -194,12 +194,12 @@ TRANSLATIONS = {
         "callback_recipe_was_removed_from_fav": "Przepis został usunięty z ulubionych",
 
         "watching_recipe_buttons_text": dedent("""
-            \n\n⬅ - powrót do pomysłów na dania
+            ⬅ - powrót do pomysłów na dania
             ⭐ - dodaj ten przepis do ulubionych
         """).strip(),
 
         "watching_fav_recipe_buttons_text": dedent("""
-            \n\n⬅ - powrót do ulubionych dań
+            ⬅ - powrót do ulubionych dań
             💔 - usuń z ulubionych
         """).strip(),
 

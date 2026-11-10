@@ -101,7 +101,8 @@ LANGUAGE_KEYBOARD = ReplyKeyboardMarkup(
             KeyboardButton(text='2️⃣'),
             KeyboardButton(text='3️⃣')
         ]
-    ]
+    ],
+    resize_keyboard=True
 )
 
 FAQ_KEYBOARD = InlineKeyboardMarkup(

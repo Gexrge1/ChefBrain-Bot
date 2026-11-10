@@ -129,25 +129,27 @@ def json_completion(prompt:str, model:str = "openai/gpt-oss-20b") -> dict:
     content = completion(prompt,model)
     return json.loads(content)
 
-def get_dish_ideas(prev:list):
+async def get_dish_ideas(prev:list, state: FSMContext):
     dish_dict = json_completion(f"""
-        Return a json array of 10 dish ideas in this language: {lang},
+        Return a json array of 10 dish ideas in this language: {(await state.get_data()).get("lang", "en")},
         in the format {{dish_ideas:[string]}}.
         Do not include {prev}.
+        Do not only generate recipes that are common in this region, make generation more unified.
+        Generate real recipes.
     """)
     # print(dish_dict)
     dishes = dish_dict.get("dish_ideas",[])
     return dishes
 
 
-def format_dish_ideas(dishes:list):
-    text = f"{html.bold(t("suggested_recipes",lang))}\n"
+async def format_dish_ideas(dishes:list, state: FSMContext):
+    text = f"{html.bold(t("suggested_recipes",(await state.get_data()).get("lang", "en")))}\n"
     for index,dish in enumerate(dishes,start=1):
         text += f"{html.bold(str(index))}. {dish}\n"
 
     text += f"""
-    {html.bold(t("refresh_recipe",lang))}
-    {html.bold(t("go_back_main_menu",lang))}
+    {html.bold(t("refresh_recipe",(await state.get_data()).get("lang", "en")))}
+    {html.bold(t("go_back_main_menu",(await state.get_data()).get("lang", "en")))}
         """
     return text
 
@@ -161,51 +163,51 @@ async def format_fav_dishes(state: FSMContext, page=1):
     # print(data.get("fav_dishes_page_content"))
 
 
-    text = f"{html.bold(t("fav_recipes_text",lang))}\n"
+    text = f"{html.bold(t("fav_recipes_text",(await state.get_data()).get("lang", "en")))}\n"
     for index,dish in enumerate(dishes,start=1):
         text += f"{html.bold(str(index))}. {dish}\n"
 
     if len(test_dict2) < 10:
         text += f"""
-        {html.bold(t("go_back_main_menu",lang))}
+        {html.bold(t("go_back_main_menu",(await state.get_data()).get("lang", "en")))}
         """
 
     elif len(test_dict2) > 10 and page == 1:
         text += f"""
-        {html.bold(t("fav_recipes_next_page",lang))}
-        {html.bold(t("go_back_main_menu",lang))}
+        {html.bold(t("fav_recipes_next_page",(await state.get_data()).get("lang", "en")))}
+        {html.bold(t("go_back_main_menu",(await state.get_data()).get("lang", "en")))}
         """
     elif len(test_dict2) < 10*page:
         text += f"""
-        {html.bold(t("fav_recipes_prev_page",lang))}
-        {html.bold(t("go_back_main_menu",lang))}
+        {html.bold(t("fav_recipes_prev_page",(await state.get_data()).get("lang", "en")))}
+        {html.bold(t("go_back_main_menu",(await state.get_data()).get("lang", "en")))}
         """
     else:
         text += f"""
-        {html.bold(t("fav_recipes_prev_page",lang))}
-        {html.bold(t("fav_recipes_next_page",lang))}
-        {html.bold(t("go_back_main_menu",lang))}
+        {html.bold(t("fav_recipes_prev_page",(await state.get_data()).get("lang", "en")))}
+        {html.bold(t("fav_recipes_next_page",(await state.get_data()).get("lang", "en")))}
+        {html.bold(t("go_back_main_menu",(await state.get_data()).get("lang", "en")))}
         """
 
     return text
 
 
 
-def format_custom_dish_ideas(dishes:list):
-    text = f"{html.bold(t("suggested_recipes",lang))}\n"
+async def format_custom_dish_ideas(dishes:list, state: FSMContext):
+    text = f"{html.bold(t("suggested_recipes",(await state.get_data()).get("lang", "en")))}\n"
     for index,dish in enumerate(dishes,start=1):
         text += f"{html.bold(str(index))}. {dish}\n"
 
     text += f"""
-    {html.bold(t("go_back_craft",lang))}
-    {html.bold(t("go_back_main_menu",lang))}
+    {html.bold(t("go_back_craft",(await state.get_data()).get("lang", "en")))}
+    {html.bold(t("go_back_main_menu",(await state.get_data()).get("lang", "en")))}
         """
     return text
 
 
-def generate_recipe(recipe_name:str):
+async def generate_recipe(recipe_name:str, state: FSMContext):
     unformatted_recipe = text_prompt_completion(f"""
-    Generate the recipe for {recipe_name} in this language: {lang},
+    Generate the recipe for {recipe_name} in this language: {(await state.get_data()).get("lang", "en")},
     Do not include the name of the recipe at the top of the response.
     Do not use Markdown (like # or **), and do not use unsupported HTML tags (like <h2>, <ul>, <li>). 
     To make text bold, use ONLY the <b>text</b> tag. For new lines, use standard \\n characters.
@@ -223,9 +225,9 @@ def custom_recipe_valid_check(user_input:str):
     answer = answer_dict.get("answer",bool)
     return answer
 
-def get_custom_dish_ideas(description:str):
+async def get_custom_dish_ideas(description:str, state: FSMContext):
     dish_dict = json_completion(f"""
-    Return a json array of 5 dish ideas in this language: {lang}, using this input : '{description}' as the preferences for the dish.
+    Return a json array of 5 dish ideas in this language: {(await state.get_data()).get("lang", "en")}, using this input : '{description}' as the preferences for the dish.
     All dishes have to contain those ingredients and/or be the type of a dish that is described in input.
     The format {{dish_ideas:[string]}}.
     """)
@@ -243,8 +245,8 @@ async def take_custom_recipe_input(message: Message, state: FSMContext, bot: Bot
 
     if custom_recipe_valid_check(user_input):
 
-        dishes = get_custom_dish_ideas(user_input)
-        text = format_custom_dish_ideas(dishes)
+        dishes = await get_custom_dish_ideas(user_input,state)
+        text = await format_custom_dish_ideas(dishes,state)
         inline_message = await message.answer(text=text,
                              reply_markup=INLINE_CUSTOM_DISH_IDEAS_KEYBOARD)
         reply_message = await message.answer(text=f"{html.bold(t("custom_recipe_numbers"))}",
@@ -259,7 +261,7 @@ async def take_custom_recipe_input(message: Message, state: FSMContext, bot: Bot
 
     else:
 
-        custom_recipe_wrong_description = await message.answer(text=t("bad_input_text",lang,user_input = user_input))
+        custom_recipe_wrong_description = await message.answer(text=t("bad_input_text",(await state.get_data()).get("lang", "en"),user_input = user_input))
         await state.update_data(custom_recipe_wrong_description = custom_recipe_wrong_description)
 
 
@@ -321,12 +323,12 @@ async def fav_dish_reply_message(state: FSMContext):
     numbers = list(RANDOM_IDEAS_INDEX.keys())
 
     if len(dishes) == 0:
-        text = t("no_fav",lang)
+        text = t("no_fav",(await state.get_data()).get("lang", "en"))
     elif len(dishes) == 1:
-        text = t("one_fav",lang)
+        text = t("one_fav",(await state.get_data()).get("lang", "en"))
     else:
         max_number = numbers[len(dishes)-1]
-        text = t("fav_recipes_number_text",lang,max_number=max_number)
+        text = t("fav_recipes_number_text",(await state.get_data()).get("lang", "en"),max_number=max_number)
 
     return text
 
@@ -334,14 +336,14 @@ async def fav_dish_reply_message(state: FSMContext):
 
 @dp.callback_query(F.data == "pressed reload")
 async def handle_dishideas_reload(callback: CallbackQuery, state: FSMContext):
-    await callback.answer(t("callback_reloading",lang))
+    await callback.answer(t("callback_reloading",(await state.get_data()).get("lang", "en")))
 
     user_data = await state.get_data()
 
-    dishes = get_dish_ideas(user_data.get("used_recipes_ideas",[]))
+    dishes = await get_dish_ideas(user_data.get("used_recipes_ideas",[]),state)
     await state.update_data(used_recipes_ideas=dishes)
 
-    text = format_dish_ideas(dishes)
+    text = await format_dish_ideas(dishes,state)
 
     await callback.message.edit_text(text=text,
                                      reply_markup=INLINE_DISH_IDEAS_KEYBOARD)
@@ -350,7 +352,7 @@ async def handle_dishideas_reload(callback: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "pressed X")
 async def handle_dishideas_close(callback: CallbackQuery, bot: Bot, state: FSMContext):
-    await callback.answer(t("callback_returning_to_main_menu",lang))
+    await callback.answer(t("callback_returning_to_main_menu",(await state.get_data()).get("lang", "en")))
 
     user_data = await state.get_data()
     suggest_recipe_reply_message = user_data.get("suggest_recipe_reply_message")
@@ -363,42 +365,41 @@ async def handle_dishideas_close(callback: CallbackQuery, bot: Bot, state: FSMCo
     await bot.delete_message(chat_id=callback.message.chat.id,
                              message_id=suggest_recipe_reply_message)
 
-    await state.clear()
 
 
     await send_to_main_menu(
         chat_id = callback.message.chat.id,
         full_name = callback.from_user.full_name,
         state = state,
-        bot = bot
+        bot = bot,
+        message = callback
     )
 
 
 
 @dp.callback_query(F.data == "custom_recipe_message_back")
 async def handle_custom_recipe_message_back(callback: CallbackQuery, bot: Bot, state: FSMContext):
-    await callback.answer(t("callback_returning_to_main_menu",lang))
+    await callback.answer(t("callback_returning_to_main_menu",(await state.get_data()).get("lang", "en")))
 
     await bot.delete_message(
         chat_id=callback.message.chat.id,
         message_id=callback.message.message_id
     )
 
-    await state.clear()
 
     await send_to_main_menu(
         chat_id = callback.message.chat.id,
         full_name = callback.from_user.full_name,
         state = state,
-        bot = bot
+        bot = bot,
+        message = callback
     )
 
 
 @dp.callback_query(F.data == "faq_go_back")
 async def handle_faq_go_back(callback: CallbackQuery, bot: Bot, state: FSMContext):
-    await callback.answer(t("callback_returning_to_main_menu",lang))
+    await callback.answer(t("callback_returning_to_main_menu",(await state.get_data()).get("lang", "en")))
 
-    await state.clear()
 
     await bot.delete_message(
             chat_id=callback.message.chat.id,
@@ -409,22 +410,23 @@ async def handle_faq_go_back(callback: CallbackQuery, bot: Bot, state: FSMContex
         chat_id = callback.message.chat.id,
         full_name = callback.from_user.full_name,
         state = state,
-        bot = bot
+        bot = bot,
+        message = callback
+
     )
 
 
 @dp.callback_query(F.data == "recipe_go_back")
 async def handle_recipe_go_back(callback: CallbackQuery, state: FSMContext):
-    await callback.answer(t("callback_returning_to_sugg_recipes",lang))
+    await callback.answer(t("callback_returning_to_sugg_recipes",(await state.get_data()).get("lang", "en")))
 
     user_data = await state.get_data()
     await state.set_state(RecipeFlow.waiting_for_dish_idea)
     dishes = user_data.get("used_recipes_ideas",[])
-    text = format_dish_ideas(dishes)
+    text = await format_dish_ideas(dishes,state)
     # print(await state.get_state())
 
-    reply_message = await callback.message.answer(text=f"{html.bold(t("random_recipe_numbers"))}",
-                             reply_markup=REPLY_DISH_IDEAS_KEYBOARD)
+    reply_message = await callback.message.answer(text=f"{html.bold(t("random_recipe_numbers",(await state.get_data()).get("lang", "en")))}", reply_markup=REPLY_DISH_IDEAS_KEYBOARD)
     await state.update_data(suggest_recipe_reply_message = reply_message.message_id)
 
 
@@ -434,13 +436,13 @@ async def handle_recipe_go_back(callback: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "custom_recipe_go_back")
 async def handle_custom_recipe_go_back(callback: CallbackQuery, state: FSMContext):
-    await callback.answer(t("callback_returning_to_sugg_recipes",lang))
+    await callback.answer(t("callback_returning_to_sugg_recipes",(await state.get_data()).get("lang", "en")))
 
     user_data = await state.get_data()
     await state.set_state(RecipeFlow.waiting_for_custom_dish_idea)
     dishes = user_data.get("custom_dish_ideas",[])
     print(dishes)
-    text = format_custom_dish_ideas(dishes)
+    text = await format_custom_dish_ideas(dishes,state)
 
     reply_message = await callback.message.answer(text=f"{html.bold(t("custom_recipe_numbers"))}",
                              reply_markup=REPLY_CUSTOM_DISH_IDEAS_KEYBOARD)
@@ -452,7 +454,7 @@ async def handle_custom_recipe_go_back(callback: CallbackQuery, state: FSMContex
 
 @dp.callback_query(F.data == "fav_recipe_go_back")
 async def handle_fav_recipe_go_back(callback: CallbackQuery, state: FSMContext):
-    await callback.answer(t("callback_returning_to_fav_recipes",lang))
+    await callback.answer(t("callback_returning_to_fav_recipes",(await state.get_data()).get("lang", "en")))
 
     user_data = await state.get_data()
     await state.set_state(RecipeFlow.waiting_for_fav_dish_idea)
@@ -472,13 +474,13 @@ async def handle_fav_recipe_go_back(callback: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "custom_recipes_back_to_first")
 async def handle_custom_recipes_go_back(callback: CallbackQuery, state: FSMContext, bot: Bot):
-    await callback.answer(t("callback_returning_to_crafting_recipes",lang))
+    await callback.answer(t("callback_returning_to_crafting_recipes",(await state.get_data()).get("lang", "en")))
 
     user_data = await state.get_data()
     number_message = user_data.get("custom_recipe_reply_message")
     await state.set_state(RecipeFlow.writing_custom_recipe)
 
-    text = t("custom_recipe_text",lang)
+    text = t("custom_recipe_text",(await state.get_data()).get("lang", "en"))
 
     first_message = await callback.message.edit_text(text=text,
                                                      reply_markup=INLINE_KEYBOARD_CUSTOM_RECIPE_MESSAGE)
@@ -489,12 +491,11 @@ async def handle_custom_recipes_go_back(callback: CallbackQuery, state: FSMConte
 
 @dp.callback_query(F.data == "custom_recipes_main_menu")
 async def handle_custom_recipes_main_menu(callback: CallbackQuery, state: FSMContext, bot: Bot):
-    await callback.answer(t("callback_returning_to_main_menu",lang))
+    await callback.answer(t("callback_returning_to_main_menu",(await state.get_data()).get("lang", "en")))
     user_data = await state.get_data()
 
     number_message = user_data.get("custom_recipe_reply_message")
 
-    await state.clear()
 
     await bot.delete_message(chat_id=callback.message.chat.id,
                              message_id=callback.message.message_id)
@@ -505,13 +506,14 @@ async def handle_custom_recipes_main_menu(callback: CallbackQuery, state: FSMCon
         chat_id = callback.message.chat.id,
         full_name = callback.from_user.full_name,
         state = state,
-        bot = bot
+        bot = bot,
+        message = callback
     )
 
 
 @dp.callback_query(F.data == "recipe_add_fav")
 async def handle_add_fav_recipe(callback: CallbackQuery, state: FSMContext):
-    await callback.answer(t("callback_recipe_was_added_to_fav",lang))
+    await callback.answer(t("callback_recipe_was_added_to_fav",(await state.get_data()).get("lang", "en")))
     user_data = await state.get_data()
 
     await state.update_data(fav_recipe_dict = {user_data.get("current_recipe_name"):user_data.get("current_recipe")})
@@ -522,7 +524,7 @@ async def handle_add_fav_recipe(callback: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "recipe_remove_fav")
 async def handle_remove_fav_recipe(callback: CallbackQuery, state: FSMContext):
-    await callback.answer(t("callback_recipe_was_removed_from_fav",lang))
+    await callback.answer(t("callback_recipe_was_removed_from_fav",(await state.get_data()).get("lang", "en")))
     user_data = await state.get_data()
     current_recipe = user_data.get("current_recipe_name")
 
@@ -577,7 +579,7 @@ async def handle_fav_dish_previous_page(callback: CallbackQuery, state: FSMConte
 
 @dp.callback_query(F.data == "fav_dish_main_menu")
 async def handle_fav_dish_main_menu(callback: CallbackQuery, bot: Bot, state: FSMContext):
-    await callback.answer(t("callback_returning_to_main_menu",lang))
+    await callback.answer(t("callback_returning_to_main_menu",(await state.get_data()).get("lang", "en")))
 
     user_data = await state.get_data()
     reply_message = user_data.get("fav_recipe_reply_message")
@@ -590,14 +592,14 @@ async def handle_fav_dish_main_menu(callback: CallbackQuery, bot: Bot, state: FS
     await bot.delete_message(chat_id=callback.message.chat.id,
                              message_id=reply_message)
 
-    await state.clear()
 
 
     await send_to_main_menu(
         chat_id = callback.message.chat.id,
         full_name = callback.from_user.full_name,
         state = state,
-        bot = bot
+        bot = bot,
+        message = callback
     )
 
 
@@ -636,6 +638,7 @@ async def handle_selecting_language(message: Message, state: FSMContext, bot: Bo
     selected_language = LANGUAGE_INDEX[str(message.text)]
 
     await dbupdate_user_language(language=selected_language,user_id=message.from_user.id)
+    await state.update_data(lang = selected_language)
 
     if selected_language == "en":
         text = "Language set to English... Returning to main menu"
@@ -668,20 +671,19 @@ async def show_suggest_recipe(message: Message, state: FSMContext, bot: Bot):
         except Exception:
             pass
 
-    dishes = get_dish_ideas(user_data.get("used_recipes_ideas",[]))
+    dishes = await get_dish_ideas(user_data.get("used_recipes_ideas",[]),state)
 
     await state.update_data(used_recipes_ideas=dishes)
     await state.set_state(RecipeFlow.waiting_for_dish_idea)
 
-    text = format_dish_ideas(dishes)
+    text = await format_dish_ideas(dishes,state)
 
     clear_msg = await message.answer(text='thinking...',reply_markup=ReplyKeyboardRemove())
 
     inline_message = await message.answer(text=text,
                          reply_markup=INLINE_DISH_IDEAS_KEYBOARD)
 
-    reply_message = await message.answer(text=f"{html.bold(t("random_recipe_numbers",lang))}",
-                         reply_markup=REPLY_DISH_IDEAS_KEYBOARD)
+    reply_message = await message.answer(text=f"{html.bold(t("random_recipe_numbers",(await state.get_data()).get("lang", "en")))}", reply_markup=REPLY_DISH_IDEAS_KEYBOARD)
 
     await state.update_data(suggest_recipe_reply_message = reply_message.message_id)
     await state.update_data(suggest_recipe_inline_message = inline_message)
@@ -711,7 +713,7 @@ async def generate_custom_recipe(message: Message, state: FSMContext, bot: Bot):
                              message_id=message.message_id)
 
 
-    first_message = await message.answer(text=t("custom_recipe_text",lang),
+    first_message = await message.answer(text=t("custom_recipe_text",(await state.get_data()).get("lang", "en")),
                          reply_markup=INLINE_KEYBOARD_CUSTOM_RECIPE_MESSAGE)
     await state.update_data(custom_recipe_first_message=first_message)
 
@@ -727,10 +729,12 @@ async def generate_show_suggest_recipe(message: Message, state: FSMContext, bot:
 
     index = RANDOM_IDEAS_INDEX[str(message.text)]
 
-    unformatted_recipe = generate_recipe(dishes[index]).replace("\\n","\n")
+    unformatted_recipe = (await generate_recipe(dishes[index],state)).replace("\\\n","\n")
+
     text = f"{html.bold(dishes[index])}👨‍🍳\n"
     text += unformatted_recipe
-    text += t("watching_recipe_buttons_text",lang)
+    text += "\n\n"
+    text += t("watching_recipe_buttons_text",(await state.get_data()).get("lang", "en"))
     await state.update_data(current_recipe_name = dishes[index],
                             current_recipe = unformatted_recipe)
 
@@ -763,10 +767,11 @@ async def generate_show_custom_recipe(message: Message, state: FSMContext, bot: 
 
     index = CUSTOM_IDEAS_INDEX[str(message.text)]
 
-    unformatted_recipe = generate_recipe(dishes[index]).replace("\\n","\n")
+    unformatted_recipe = (await generate_recipe(dishes[index],state)).replace("\\\n","\n")
     text = f"{html.bold(dishes[index])}👨‍🍳\n"
     text += unformatted_recipe
-    text += t("watching_recipe_buttons_text",lang)
+    text += "\n\n"
+    text += t("watching_recipe_buttons_text",(await state.get_data()).get("lang", "en"))
     await state.update_data(current_recipe_name = dishes[index],
                             current_recipe = unformatted_recipe)
 
@@ -803,7 +808,7 @@ async def show_help(message: Message, state: FSMContext, bot: Bot):
 
     clear_msg = await message.answer(text='thinking...',reply_markup=ReplyKeyboardRemove())
 
-    await message.answer(text=t("faq",lang),
+    await message.answer(text=t("faq",(await state.get_data()).get("lang", "en")),
                          reply_markup=FAQ_KEYBOARD)
 
     await bot.delete_message(chat_id=message.chat.id,
@@ -860,7 +865,8 @@ async def generate_show_fav_recipe(message: Message, state: FSMContext, bot: Bot
 
     text = f"{html.bold(dishes[index])}👨‍🍳\n"
     text += recipe
-    text += t("watching_fav_recipe_buttons_text",lang)
+    text += "\n\n"
+    text += t("watching_fav_recipe_buttons_text",(await state.get_data()).get("lang", "en"))
     await state.update_data(current_recipe_name = dishes[index])
 
     clear_msg = await message.answer(text='thinking...',reply_markup=ReplyKeyboardRemove())
@@ -892,12 +898,13 @@ async def handle_cornercases2(message: Message):
     await message.answer("You cant use this command here")
 
 
-async def send_to_main_menu(message: Message, chat_id:int, full_name:str, state: FSMContext, bot: Bot):
+async def send_to_main_menu(message, chat_id:int, full_name:str, state: FSMContext, bot: Bot):
     text = t("main_menu_text",(await state.get_data()).get("lang", "en"),full_name = html.bold(html.quote(full_name)))
     menu_message = await bot.send_message(text=text,chat_id=chat_id,reply_markup=MAIN_MENU_KEYBOARD)
     await state.clear()
     await state.update_data(menu_message_id = menu_message.message_id)
     await state.update_data(lang = await dbget_user_language(user_id=message.from_user.id))
+    print(await dbget_user_language(user_id=message.from_user.id))
 
 
 async def ask_for_language(full_name: str, state: FSMContext, bot: Bot, user_id: int, chat_id: int):
